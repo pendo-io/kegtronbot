@@ -1,0 +1,18 @@
+indexes:
+- kind: Pank
+  properties:
+  - name: giver
+    direction: asc
+  - name: pank_type
+  - name: timestamp
+    direction: asc
+- kind: Pank
+  properties:
+  - name: giver
+  - name: timestamp
+- kind: Pank
+  properties:
+  - name: recipient
+    direction: asc
+  - name: timestamp
+    direction: asc

@@ -36,7 +36,7 @@ const (
 	PANK_BACK_CALLBACK   = "pank_back_callback"
 
 	PANK_BACK_NAME = "pankBack"
-	JOIN_PANK_NAME = "joinPank"
+	PILE_PANK_NAME = "pilePank"
 )
 
 type Pank struct {
@@ -249,7 +249,7 @@ func handlesSlackPankInteractive(ctx context.Context, log appwrap.Logging, form 
 	pankList.Placeholder = "Choose a value..."
 	pankList.Value = defaultPank
 
-	reasonText := slack.NewTextInput(PANK_REASON_NAME, "Why?", "")
+	reasonText := slack.NewTextInput(PANK_REASON_NAME, "Because...", "")
 	reasonText.Optional = false
 	reasonText.MinLength = 1
 
@@ -383,7 +383,7 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 	}
 
 	if !pank.Private {
-		returnPankAttachment.Actions = append(returnPankAttachment.Actions, slack.AttachmentAction{Name: JOIN_PANK_NAME, Text: fmt.Sprintf("Join the %s", pank.Type), Type: "button", Value: string(joinPankButtonValue)})
+		returnPankAttachment.Actions = append(returnPankAttachment.Actions, slack.AttachmentAction{Name: PILE_PANK_NAME, Text: fmt.Sprintf("Pile on the %s", pank.Type), Type: "button", Value: string(joinPankButtonValue)})
 		sm.Attachments = []slack.Attachment{returnPankAttachment}
 
 		//post to channels - all attachments
@@ -393,7 +393,9 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 			// in_channel will send to pank-announcements if not private
 			channels = append(channels, "#pank-announcements")
 		}
-		channels = append(channels, form.ChannelName)
+		if form.ChannelName != "announcements" {
+			channels = append(channels, form.ChannelName)
+		}
 		channels = unique(channels)
 
 		if err := sm.PostMessage(ctx, log, channels, form.Command); err != nil {
@@ -708,7 +710,7 @@ func HandleInteractivePankResponse(w http.ResponseWriter, r *http.Request) {
 		defaultUser := rePank.Recipient
 		defaultPank := rePank.Type
 
-		if actionCallback.Actions[0].Name == JOIN_PANK_NAME {
+		if actionCallback.Actions[0].Name == PILE_PANK_NAME {
 			users, err := api.GetUsers()
 			if err != nil {
 				log.Errorf("Error getting user %s", err)
@@ -724,6 +726,10 @@ func HandleInteractivePankResponse(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+		}
+
+		if defaultUser == "" {
+			log.Errorf("default user not found %s", rePank.Recipient)
 		}
 
 		if message, err := handlesSlackPankInteractive(ctx, log, slackMessage, defaultUser, defaultPank); err != nil {

@@ -2,4 +2,4 @@
 
 go mod vendor
 go build -mod=vendor ./...
-gcloud --project pendo-pankbot app deploy internal/app/backend.yaml --quiet --promote --no-stop-previous-version
+gcloud --project pendo-pankbot app deploy internal/app/app.yaml --quiet --promote --no-stop-previous-version

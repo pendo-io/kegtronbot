@@ -34,10 +34,12 @@ Running this will be done primarily by deploying the project to GAE and using it
 You can run the unit tests by running `go test -tags appenginevm -v  ./...`
 
 Use a look-aside version in GAE and test on the pendo-test slack
-
+```shell
+sh ./deploy-test.sh
+```
 
 #### Deploy
 
 ```shell
-sh ./deploy.sh
+sh ./deploy-prod.sh
 ```

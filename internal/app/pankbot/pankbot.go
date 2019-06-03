@@ -36,7 +36,7 @@ const (
 	PANK_BACK_CALLBACK   = "pank_back_callback"
 
 	PANK_BACK_NAME = "pankBack"
-	JOIN_PANK_NAME = "joinPank"
+	PILE_PANK_NAME = "pilePank"
 )
 
 type Pank struct {
@@ -249,7 +249,7 @@ func handlesSlackPankInteractive(ctx context.Context, log appwrap.Logging, form 
 	pankList.Placeholder = "Choose a value..."
 	pankList.Value = defaultPank
 
-	reasonText := slack.NewTextInput(PANK_REASON_NAME, "Why?", "")
+	reasonText := slack.NewTextInput(PANK_REASON_NAME, "Because...", "")
 	reasonText.Optional = false
 	reasonText.MinLength = 1
 
@@ -291,6 +291,8 @@ func openDialog(isDebugMode bool, ctx context.Context, log appwrap.Logging, dial
 		return "", err
 	} else {
 		encoded, err := json.Marshal(dialogTrigger)
+
+		//log.Infof("dialog JSON %s", encoded)
 		reqBody := bytes.NewBuffer(encoded)
 		req, err := http.NewRequest("POST", "https://slack.com/api/dialog.open", reqBody)
 		if err != nil {
@@ -360,7 +362,7 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 	sm := NewSlackMessage(fmt.Sprintf("<%s> gave %s to <%s> because %s", pank.Giver, pank.Type, pank.Recipient, pank.Reason), pank.Giver, 0)
 
 	pankBackButtonValue, _ := json.Marshal(PankFollowUp{Recipient: form.UserId})
-	joinPankButtonValue, _ := json.Marshal(PankFollowUp{Recipient: pank.Recipient, Type: pank.Type})
+	pilePankButtonValue, _ := json.Marshal(PankFollowUp{Recipient: pank.Recipient, Type: pank.Type})
 
 	sm.ResponseType = "" // Do not set response_type for non-response posts
 
@@ -369,10 +371,18 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 		log.Errorf("Post message to giver call failed: %v", err)
 	}
 
+	api := slack.New(slackAuthToken[PANK_COMMAND])
+	giver, err := api.GetUserInfo(form.UserId)
+
+	if err != nil {
+		log.Errorf("failed to get giver info %v: %v", form.UserName, err)
+		return "", err
+	}
+
 	returnPankAttachment := slack.Attachment{
 		CallbackID: PANK_BACK_CALLBACK,
 		Actions: []slack.AttachmentAction{
-			{Name: PANK_BACK_NAME, Text: fmt.Sprintf("Pank %s back", pank.Giver), Type: "button", Value: string(pankBackButtonValue)},
+			{Name: PANK_BACK_NAME, Text: fmt.Sprintf("Pank @%s back", giver.Profile.DisplayName), Type: "button", Value: string(pankBackButtonValue)},
 		},
 	}
 	sm.Attachments = []slack.Attachment{returnPankAttachment}
@@ -383,7 +393,7 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 	}
 
 	if !pank.Private {
-		returnPankAttachment.Actions = append(returnPankAttachment.Actions, slack.AttachmentAction{Name: JOIN_PANK_NAME, Text: fmt.Sprintf("Join the %s", pank.Type), Type: "button", Value: string(joinPankButtonValue)})
+		returnPankAttachment.Actions = append(returnPankAttachment.Actions, slack.AttachmentAction{Name: PILE_PANK_NAME, Text: fmt.Sprintf("Pile on the %s", pank.Type), Type: "button", Value: string(pilePankButtonValue)})
 		sm.Attachments = []slack.Attachment{returnPankAttachment}
 
 		//post to channels - all attachments
@@ -393,7 +403,9 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 			// in_channel will send to pank-announcements if not private
 			channels = append(channels, "#pank-announcements")
 		}
-		channels = append(channels, form.ChannelName)
+		if form.ChannelName != "announcements" {
+			channels = append(channels, form.ChannelName)
+		}
 		channels = unique(channels)
 
 		if err := sm.PostMessage(ctx, log, channels, form.Command); err != nil {
@@ -401,12 +413,17 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 		}
 	}
 
-	if err := postToGoogleSheets(ctx, pank); err != nil {
-		log.Errorf("Google sheets call failed: %v", err)
+	if form.TeamDomain == "Pendo" {
+		if err := postToGoogleSheets(ctx, pank); err != nil {
+			log.Errorf("Google sheets call failed: %v", err)
+		}
+		if err := publishToLeftronic(ctx, pank); err != nil {
+			log.Errorf("Leftronic call failed: %v", err)
+		}
+	} else {
+		log.Debugf("Test environment, not sending info to google sheets/leftronic")
 	}
-	if err := publishToLeftronic(ctx, pank); err != nil {
-		log.Errorf("Leftronic call failed: %v", err)
-	}
+
 	return "", nil
 }
 
@@ -708,7 +725,7 @@ func HandleInteractivePankResponse(w http.ResponseWriter, r *http.Request) {
 		defaultUser := rePank.Recipient
 		defaultPank := rePank.Type
 
-		if actionCallback.Actions[0].Name == JOIN_PANK_NAME {
+		if actionCallback.Actions[0].Name == PILE_PANK_NAME {
 			users, err := api.GetUsers()
 			if err != nil {
 				log.Errorf("Error getting user %s", err)
@@ -724,6 +741,10 @@ func HandleInteractivePankResponse(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+		}
+
+		if defaultUser == "" {
+			log.Errorf("default user not found %s", rePank.Recipient)
 		}
 
 		if message, err := handlesSlackPankInteractive(ctx, log, slackMessage, defaultUser, defaultPank); err != nil {

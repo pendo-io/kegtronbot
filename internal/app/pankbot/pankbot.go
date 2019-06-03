@@ -3,6 +3,7 @@ package pankbot
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -109,6 +110,8 @@ var pankNames = map[string]string{
 	":pank-transparent:": "Be Transparent",
 }
 
+var errPankNotAllParams = errors.New("Not all parameters met for /pank")
+
 func isPrivatePank(data []string) bool {
 	private := strings.ToLower(data[len(data)-1])
 	// these are all interpretations that have been made of the help text from time to time….
@@ -122,6 +125,11 @@ func validatePank(data []string, log appwrap.Logging) error {
 	// these are all interpretations that have been made of the help text from time to time….
 	if isPrivatePank(data) {
 		data = data[:len(data)-1]
+	}
+
+	// ensure that enough parameters are passed into pank command
+	if len(data) <= 2 {
+		return errPankNotAllParams
 	}
 
 	// check for a pank
@@ -413,7 +421,7 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 		}
 	}
 
-	if form.TeamDomain == "Pendo" {
+	if form.TeamDomain == "pendo" {
 		if err := postToGoogleSheets(ctx, pank); err != nil {
 			log.Errorf("Google sheets call failed: %v", err)
 		}
@@ -427,7 +435,7 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 	return "", nil
 }
 
-func handleSlackPankMe(ctx context.Context, log appwrap.Logging, form *SlackBotMessage) (string, error) {
+func handleSlackPankMe(ctx context.Context, log appwrap.Logging, form *SlackBotMessage, w http.ResponseWriter) (string, error) {
 	sm := NewSlackMessage("Your current pankbot:", form.UserId, 16)
 	// "Your" doesn't make sense in a public context
 	// Also, this includes PRIVATE pankbot; do not change this to in_channel
@@ -511,12 +519,10 @@ func handleSlackPankMe(ctx context.Context, log appwrap.Logging, form *SlackBotM
 		})
 	}
 
-	err := sm.PostMessage(ctx, log, []string{form.ChannelId}, form.Command)
-
-	return "", err
+	return "", sm.RespondMessageJSON(ctx, log, w)
 }
 
-func handleSlackPankReport(ctx context.Context, log appwrap.Logging, form *SlackBotMessage) (string, error) {
+func handleSlackPankReport(ctx context.Context, log appwrap.Logging, form *SlackBotMessage, w http.ResponseWriter) (string, error) {
 	sm := NewSlackMessage("Current public pankbot:", form.UserId, 1)
 	// This gets big, don't litter the public channel after all
 	sm.ResponseType = "ephemeral"
@@ -547,12 +553,10 @@ func handleSlackPankReport(ctx context.Context, log appwrap.Logging, form *Slack
 		Color:      SlackGood,
 	})
 
-	err := sm.PostMessage(ctx, log, []string{form.ChannelId}, form.Command)
-
-	return "", err
+	return "", sm.RespondMessageJSON(ctx, log, w)
 }
 
-func handleSlackPankHelpCommand(ctx context.Context, log appwrap.Logging, form *SlackBotMessage) {
+func handleSlackPankHelpCommand(ctx context.Context, log appwrap.Logging, form *SlackBotMessage, w http.ResponseWriter) {
 	sm := NewSlackMessage("Available `/pank` commands", form.UserId, 0)
 	sm.ResponseType = "ephemeral"
 	sm.Attachments = []slack.Attachment{{
@@ -576,7 +580,8 @@ func handleSlackPankHelpCommand(ctx context.Context, log appwrap.Logging, form *
 		MarkdownIn: []string{"text"},
 		Color:      SlackGood,
 	}}
-	sm.PostMessage(ctx, log, []string{form.ChannelId}, form.Command)
+
+	sm.RespondMessageJSON(ctx, log, w)
 }
 
 func handleSlackCommand(ctx context.Context, log appwrap.Logging, w http.ResponseWriter, r *http.Request, form *SlackBotMessage, isInteractive bool) {
@@ -636,17 +641,23 @@ func handleSlackPankCommand(ctx context.Context, log appwrap.Logging, w http.Res
 	log.Debugf("form: %v", form)
 	switch command {
 	case "help":
-		handleSlackPankHelpCommand(ctx, log, form)
+		handleSlackPankHelpCommand(ctx, log, form, w)
 		return "", nil
 	case "me":
-		return handleSlackPankMe(ctx, log, form)
+		return handleSlackPankMe(ctx, log, form, w)
 	case "report":
-		return handleSlackPankReport(ctx, log, form)
+		return handleSlackPankReport(ctx, log, form, w)
 	case "int":
 		return handlesSlackPankInteractive(ctx, log, form, "", "")
 	default:
 		if message, err := handleSlackPank(ctx, log, form); err != nil {
-			return "", err
+			switch err {
+			// if user doesn't use all params, use interactive pank menu
+			case errPankNotAllParams:
+				return handlesSlackPankInteractive(ctx, log, form, "", "")
+			default:
+				return "", err
+			}
 		} else {
 			return message, nil
 		}

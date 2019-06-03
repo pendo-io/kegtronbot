@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/nlopes/slack"
 	"github.com/pendo-io/appwrap"
@@ -65,6 +66,17 @@ func (sm SlackMessage) PostMessage(ctx context.Context, log appwrap.Logging, cha
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// create and send an http response for usage with the eventsapi responses to post a SlackMessage
+func (sm SlackMessage) RespondMessageJSON(ctx context.Context, log appwrap.Logging, w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	b, _ := json.Marshal(sm)
+	if _, err := w.Write(b); err != nil {
+		log.Errorf("Failed to post message using json, err: %v, message: %v", err, sm)
+		return err
 	}
 	return nil
 }

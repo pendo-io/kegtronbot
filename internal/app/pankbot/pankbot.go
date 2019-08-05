@@ -2,12 +2,12 @@ package pankbot
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -15,7 +15,6 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
-	"google.golang.org/appengine/runtime"
 	"google.golang.org/appengine/urlfetch"
 
 	"github.com/nlopes/slack"
@@ -166,31 +165,6 @@ func ParsePank(command, user string, log appwrap.Logging) (*Pank, error) {
 	reason := strings.Join(data[2:], " ")
 
 	return NewPank(giver, recipient, "", pankType, reason, private), nil
-}
-
-func postToGoogleSheets(ctx context.Context, pank *Pank) error {
-	// Google sheets have been slow to respond
-	return runtime.RunInBackground(ctx, func(ctx context.Context) {
-		log := getLog(ctx)
-		log.Debugf("posting pank %+v to el goog", pank)
-		v := url.Values{}
-		v.Set("giver", pank.Giver)
-		v.Set("recipient", pank.Recipient)
-		v.Set("pank_type", pank.Type)
-		v.Set("reason", pank.Reason)
-		v.Set("private", fmt.Sprintf("%v", pank.Private))
-		v.Set("sent_at", pank.Timestamp.Format(time.RFC1123))
-		v.Set("timestamp", fmt.Sprintf("%d", pank.Timestamp.UnixNano()))
-		client := urlfetch.Client(ctx)
-		// should we retry on transient error, or sync up by cron?
-		if resp, err := client.PostForm("https://script.google.com/macros/s/AKfycbxCUPTHWstQl2ojurAF7QmYV8QyvOm4gJ2vik8qSphCKsXR4acw/exec", v); err != nil {
-			log.Errorf("Failed posting to google sheet: %v", err)
-		} else {
-			log.Debugf("...finished posting to el goog: %v", resp)
-		}
-
-		return
-	})
 }
 
 func publishToLeftronic(ctx context.Context, pank *Pank) error {
@@ -422,14 +396,11 @@ func handleSlackPank(ctx context.Context, log appwrap.Logging, form *SlackBotMes
 	}
 
 	if form.TeamDomain == "pendo" {
-		if err := postToGoogleSheets(ctx, pank); err != nil {
-			log.Errorf("Google sheets call failed: %v", err)
-		}
 		if err := publishToLeftronic(ctx, pank); err != nil {
 			log.Errorf("Leftronic call failed: %v", err)
 		}
 	} else {
-		log.Debugf("Test environment, not sending info to google sheets/leftronic")
+		log.Debugf("Test environment, not sending info to leftronic")
 	}
 
 	return "", nil
@@ -766,6 +737,59 @@ func HandleInteractivePankResponse(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(message))
 		}
 	}
+}
+
+// GetPanksCSV gets a CSV of all the panks given last quarter. It is called via a google sheet.
+func GetPanksCSV(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+	log := getLog(ctx)
+	ds := appwrap.NewAppengineDatastore(ctx).Namespace("PankStore")
+
+	log.Infof("Running query to get last quarter's panks...")
+
+	lastQuarterEnd := quarterStart(time.Now())
+	// Day before start of this quarter is in last quarter
+	lastQuarterStart := quarterStart(lastQuarterEnd.Add(-24 * time.Hour))
+	q := ds.NewQuery("Pank").Filter(
+		"timestamp >", lastQuarterStart).Filter(
+		"timestamp <", lastQuarterEnd).Order("timestamp")
+	panks := make([]Pank, 0)
+	for t := q.Run(); ; {
+		var p Pank
+		if _, err := t.Next(&p); err == datastore.Done {
+			break
+		} else if err != nil {
+			http.Error(w, "Error reading from datastore: "+err.Error(), http.StatusInternalServerError)
+			log.Errorf("Error reading from datastore: %v", err)
+			return
+		} else {
+			panks = append(panks, p)
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment;filename=panks.csv")
+	wr := csv.NewWriter(w)
+
+	for _, pank := range panks {
+		record := []string{
+			fmt.Sprintf("%d", pank.Timestamp.UnixNano()),
+			pank.Timestamp.Format(time.RFC1123), // e.g. Tue, 30 Apr 2019 20:35:43 UTC
+			pank.Giver,
+			pank.Recipient,
+			pank.Type,
+			fmt.Sprintf("%t", pank.Private),
+			pank.Reason,
+		}
+
+		if err := wr.Write(record); err != nil {
+			http.Error(w, "Error sending csv: "+err.Error(), http.StatusInternalServerError)
+			log.Errorf("Error sending csv: %v", err)
+			return
+		}
+	}
+	wr.Flush()
+	log.Infof("Sent all requested panks.")
 }
 
 func GetPanks(w http.ResponseWriter, r *http.Request) {

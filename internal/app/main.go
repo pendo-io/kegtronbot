@@ -24,6 +24,7 @@ func main() {
 	http.HandleFunc("/slack", pankbot.HandleSlack)
 	http.HandleFunc("/slackInteractive", pankbot.HandleInteractivePankResponse)
 	http.HandleFunc("/getPanks", pankbot.GetPanks)
+	http.HandleFunc("/getPanksCSV", pankbot.GetPanksCSV)
 	http.HandleFunc("/postPanks", pankbot.PostPanks)
 
 	port := os.Getenv("PORT")

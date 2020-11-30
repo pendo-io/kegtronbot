@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
-	"github.com/pendo-io/pankbot/internal/app/pankbot"
 	"google.golang.org/appengine"
 )
 
@@ -21,11 +21,6 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/slack", pankbot.HandleSlack)
-	http.HandleFunc("/slackInteractive", pankbot.HandleInteractivePankResponse)
-	http.HandleFunc("/getPanks", pankbot.GetPanks)
-	http.HandleFunc("/getPanksCSV", pankbot.GetPanksCSV)
-	http.HandleFunc("/postPanks", pankbot.PostPanks)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -34,9 +29,12 @@ func main() {
 	}
 
 	log.Printf("Listening on port %s", port)
-	appengine.Main()
-}
+	isDev := os.Getenv("ISDEV")
+	isDev = strings.ToLower(isDev)
+	if isDev == "y" || isDev == "yes" {
+		http.ListenAndServe(":8080", nil)
+	} else {
+		appengine.Main()
+	}
 
-// auth store
-// panks
-// channels
+}

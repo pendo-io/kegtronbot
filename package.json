@@ -1,0 +1,22 @@
+{
+  "name": "kegtronbot",
+  "version": "1.0.0",
+  "description": "A slackbot for getting the status of kegs in the Raleigh office",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pendo-io/kegtronbot.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pendo-io/kegtronbot/issues"
+  },
+  "homepage": "https://github.com/pendo-io/kegtronbot#readme",
+  "dependencies": {
+    "jest": "^26.6.3"
+  }
+}

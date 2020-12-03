@@ -5,6 +5,14 @@ class SlackAuth {
         this._botToken = botToken;
         this._teamId = teamId;
     }
+    
+    getName() {
+        return this.name;
+    }
+
+    getTeamId() {
+        return this._teamId;
+    }
 
     getBotToken() {
         return this._botToken;
@@ -17,11 +25,11 @@ class SlackAuth {
 
 class SlackAuthGroup {
     constructor() {
-        this.workspaces = [];
+        this.workspaces = {};
     }
 
     addAuth(newAuth) {
-        if (newAuth instanceof SlackAuth) this.workspaces.push(newAuth);
+        if (newAuth instanceof SlackAuth) this.workspaces[newAuth.getTeamId()] = newAuth;
         else {
             console.error("Error -- attempted to add object that is not a valid SlackAuth");
             console.error("Added object: ", newAuth);
@@ -29,12 +37,7 @@ class SlackAuthGroup {
     }
 
     getBotToken(teamId) {
-        var outToken = "";
-        this.workspaces.forEach(team => {
-            console.log(`Checking if team ${teamId} matches ${team._teamId}. Result: ${team.checkTeamId(teamId)}`);
-            if (team.checkTeamId(teamId)) outToken = team.getBotToken();
-        })
-        return outToken;
+        return this.workspaces[teamId].getBotToken() || "";
     }
 }
 
@@ -46,6 +49,7 @@ class SlackMessage {
             name: reqBody.user_name || "",
             id: reqBody.user_id || ""
         }
+        this.teamId = reqBody.team_id;
         this.srcCommand = reqBody.command || "";
         this.responseUrl = reqBody.response_url || "";
     }
@@ -59,6 +63,10 @@ class SlackMessage {
             },
             data: data
         }
+    }
+
+    getTeamId() {
+        return this.teamId;
     }
 
     sendResponse(data, showInChannel = false, replaceOrig = false) {
@@ -107,6 +115,10 @@ class SlackInteractive {
                 this.actions = [];
                 break;
         }
+    }
+
+    getTeamId() {
+        return this.team.id;
     }
 
     isActionBlock() {

@@ -68,16 +68,24 @@ function handleModalView(slackInteractive) {
 module.exports = {
     slackMessageHandler: (req, res, next) => {
         var receivedMsg = new SlackMessage(req.body);
-        res.status(200).send();
-        Promise.resolve(kegTronRaleigh.getSlackStatus(true, false, receivedMsg.user.id)).then((data) => {
-            receivedMsg.sendResponse(data);
-        });
+        if (authControl.getBotToken(receivedMsg.getTeamId())) {
+            res.status(200).send();
+            Promise.resolve(kegTronRaleigh.getSlackStatus(true, false, receivedMsg.user.id)).then((data) => {
+                receivedMsg.sendResponse(data);
+            });
+        } else {
+            res.status(403).type('txt').send("Workspace not recognized.")
+        }
     },
 
     slackInteractiveHandler: (req, res, next) => {
-        res.status(200).send();
         var interactive = new SlackInteractive(req.body, authControl);
-        if (interactive.isActionBlock()) processKegActions(interactive);
-        else if (interactive.isViewSubmit()) handleModalView(interactive);
+        if (authControl.getBotToken(interactive.getTeamId())) {
+            res.status(200).send();
+            if (interactive.isActionBlock()) processKegActions(interactive);
+            else if (interactive.isViewSubmit()) handleModalView(interactive);
+        } else {
+            res.status(403).type('txt').send("Workspace not recognized.")
+        }
     }
 }

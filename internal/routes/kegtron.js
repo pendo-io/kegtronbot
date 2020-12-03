@@ -127,9 +127,20 @@ class KegTron {
     }
 
     addSlackBody(composer, shareBtn, userId) {
-        this.kegs.forEach(keg => {
-            keg.addSlackStatus(composer, shareBtn);
-        })
+        if (shareBtn) {
+            this.kegs.forEach(keg => {
+                keg.addSlackStatus(composer, shareBtn);
+            })
+        } else {
+            for (var i = 0; i < this.kegs.length; i=i+2) {
+                var keg1 = this.kegs[i];
+                var keg2 = this.kegs[i+1];
+                var newSection = composer.newSection(keg1.getMrkdwnStatus(), null);
+                if (keg2) newSection.addTextBlock(keg2.getMrkdwnStatus())
+                else newSection.addTextBlock(" ");
+                composer.addComponent(newSection);
+            }
+        }
         composer.addDivider();
     }
 
@@ -208,23 +219,6 @@ class KegTron {
 var kegTronRaleigh = new KegTron('S93rEbNyuzVJaDx3sdfaWXQ', 'Raleigh');
 
 module.exports = {
-    getKegData: () => {
-        return kegTronRaleigh.getTextStatus();
-    },
-
-    getSlackKegData: (shareBtn, showContext, userId, customMsg) => {
-        return Promise.resolve(kegTronRaleigh.getSlackStatus(shareBtn, showContext, userId, customMsg));
-    },
-
-    getSlackSingleKegData: (kegIndex, shareBtn, showContext, userId, customMsg) => {
-        return Promise.resolve(kegTronRaleigh.getSingleKegSlackStatus(kegIndex, shareBtn, showContext, userId, customMsg));
-    },
-
-    getSlackKegModal: (shareBtn, userId) => {
-        return kegTronRaleigh.getSlackModal(shareBtn, userId);
-    },
-
-    getSlackSingleKegModal: (kegIndex, shareBtn, userId) => {
-        return kegTronRaleigh.getSingleKegSlackModal(kegIndex, shareBtn, userId);
-    }
+    Keg,
+    KegTron
 }

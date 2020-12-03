@@ -142,7 +142,8 @@ class SlackBlockContext extends SlackBlockComponent {
 class SlackBlockSection extends SlackBlockComponent {
     constructor(text, accessory) {
         super();
-        this.text = text || "";
+        this.textBlocks = [];
+        if (text) this.textBlocks.push(text);
         this.accessory = accessory;
     }
 
@@ -150,13 +151,28 @@ class SlackBlockSection extends SlackBlockComponent {
         this.accessory = new SlackBlockAccessoryButton(text, value, action);
     }
 
+    createTextElm(text) {
+        return {
+            "type": "mrkdwn",
+            "text": text
+        }
+    }
+
+    addTextBlock(text) {
+        this.textBlocks.push(text);
+    }
+
     json() {
         var outObj = {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": this.text,
-            },
+            "type": "section"
+        }
+        if (this.textBlocks.length == 1) {
+            outObj.text = this.createTextElm(this.textBlocks[0]);
+        } else if (this.textBlocks.length > 1) {
+            outObj.fields = [];
+            this.textBlocks.forEach (block => {
+                outObj.fields.push(this.createTextElm(block));
+            })
         }
         if (this.accessory) outObj.accessory = this.accessory.json();
         return outObj;

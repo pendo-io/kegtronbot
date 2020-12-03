@@ -27,7 +27,7 @@ class Keg {
 ${this.isEmpty() ? `This keg is empty` : `${this.getDrinksRemaining()} drinks remaining`}`;
     }
 
-    getMrkdwnStatus(){
+    getMrkdwnStatus() {
         var drRem = this.getDrinksRemaining();
         return `*${this.drinkType}* -${this.style ? ` _${this.style}_ -` : ``}${this.maker ? ` ${this.maker} |` : ``} ${this.name}
 ${this.isEmpty() ? `:x: This keg is empty` : `${drRem < 10 ? `:warning:` : ``} \`${drRem}\` drinks remaining`}`;
@@ -35,7 +35,7 @@ ${this.isEmpty() ? `:x: This keg is empty` : `${drRem < 10 ? `:warning:` : ``} \
 
     addSlackStatus(composer, shareBtn = true) {
         var newSection = composer.newSection(this.getMrkdwnStatus(), null);
-        if (shareBtn) newSection.setButtonAccessory("Share", `${this.deviceName}|${this.portNum}`, "share_keg");
+        if (shareBtn) newSection.setButtonAccessory("Share", `${this.deviceName}|${this.portNum}`, "share_keg_modal");
         composer.addComponent(newSection);
     }
 }
@@ -76,7 +76,7 @@ class KegTron {
             console.log('Error retrieving kegtron data');
         })
 
-        
+
     }
 
     buildKegs(kegtronData) {
@@ -101,12 +101,14 @@ class KegTron {
         return outMsg;
     }
 
-    getSlackStatus(shareBtn, userId) {
+    getSlackStatus(shareBtn, showContext, userId, customMsg) {
         return Promise.resolve(this.refresh()).then(() => {
             var composer = slackCompose();
             this.addKegTronHeader(composer);
+            if (customMsg) this.addKegTronCustomMessage(composer, customMsg);
             this.addSlackBody(composer, shareBtn, userId);
-            if(shareBtn) this.addKegTronActionFooter(composer);
+            if (showContext) this.addKegTronContext(composer, userId);
+            if (shareBtn) this.addKegTronActionFooter(composer);
             return composer.json();
         })
     }
@@ -116,25 +118,28 @@ class KegTron {
         var composer = slackCompose("modal");
         composer.setModalTitle("Share Keg Status");
         composer.setModalSubmitText("Share");
-        this.addKegTronHeader(composer);
+        this.addKegTronChannelSelect(composer);
+        //this.addKegTronHeader(composer);
+        this.addKegTronCustomMessageInput((composer));
         this.addSlackBody(composer, shareBtn, userId);
-        if(shareBtn) this.addKegTronActionFooter(composer);
+        if (shareBtn) this.addKegTronActionFooter(composer);
         return composer.json();
     }
 
     addSlackBody(composer, shareBtn, userId) {
         this.kegs.forEach(keg => {
             keg.addSlackStatus(composer, shareBtn);
-            composer.addDivider();
         })
-        this.addKegTronContext(composer, userId);
+        composer.addDivider();
     }
 
-    getSingleKegSlackStatus(kegIndex, shareBtn, userId) {
+    getSingleKegSlackStatus(kegIndex, shareBtn, showContext, userId, customMsg) {
         return Promise.resolve(this.refresh()).then(() => {
             var composer = slackCompose();
             this.addKegTronHeader(composer);
+            if (customMsg) this.addKegTronCustomMessage(composer, customMsg);
             this.addSingleKegSlackBody(composer, kegIndex, shareBtn, userId);
+            if (showContext) this.addKegTronContext(composer, userId);
             return composer.json();
         })
     }
@@ -144,7 +149,9 @@ class KegTron {
         var composer = slackCompose("modal");
         composer.setModalTitle("Share Keg Status");
         composer.setModalSubmitText("Share");
-        this.addKegTronHeader(composer);
+        this.addKegTronChannelSelect(composer);
+        //this.addKegTronHeader(composer);
+        this.addKegTronCustomMessageInput((composer));
         this.addSingleKegSlackBody(composer, kegIndex, shareBtn, userId);
         return composer.json();
     }
@@ -152,23 +159,22 @@ class KegTron {
     addSingleKegSlackBody(composer, kegIndex, shareBtn, userId) {
         this.kegs[kegIndex].addSlackStatus(composer, shareBtn);
         composer.addDivider();
-        this.addKegTronContext(composer, userId);
     }
 
     addKegTronActionFooter(composer) {
         composer.addAction(
             [
                 {
-                    "type":"button",
-                    "text":"Beer Signal",
-                    "value":"beer_signal",
-                    "action":"beer_signal"
+                    "type": "button",
+                    "text": "Beer Signal",
+                    "value": "beer_signal",
+                    "action": "beer_signal_modal"
                 },
                 {
-                    "type":"button",
-                    "text":"Dismiss",
-                    "value":"dismiss",
-                    "action":"dismiss"
+                    "type": "button",
+                    "text": "Dismiss",
+                    "value": "dismiss",
+                    "action": "dismiss"
                 }
             ]
         );
@@ -177,11 +183,26 @@ class KegTron {
     addKegTronHeader(composer) {
         composer.addHeader(":beers: Check Out What's On Tap! :beers:")
         composer.addDivider();
-    } 
+    }
+
+    addKegTronCustomMessageInput(composer) {
+        composer.addTextInput("Custom Message", "custom_message_input","custom_message_block", true);
+        composer.addDivider();
+    }
+
+    addKegTronCustomMessage(composer, text) {
+        composer.addSection(text);
+        composer.addDivider();
+    }
+
+    addKegTronChannelSelect(composer) {
+        composer.addChannelSelect("Choose a Channel to Share In", "channel_select","channel_select_block", false);
+        composer.addDivider();
+    }
 
     addKegTronContext(composer, userId) {
         composer.addContext(`:beer: Shared${userId ? ` by <@${userId}>` : ``} via */kegtron*`);
-    } 
+    }
 }
 
 var kegTronRaleigh = new KegTron('S93rEbNyuzVJaDx3sdfaWXQ', 'Raleigh');
@@ -191,11 +212,19 @@ module.exports = {
         return kegTronRaleigh.getTextStatus();
     },
 
-    getSlackKegData: (shareBtn, userId) => {
-        return Promise.resolve(kegTronRaleigh.getSlackStatus(shareBtn, userId));
+    getSlackKegData: (shareBtn, showContext, userId, customMsg) => {
+        return Promise.resolve(kegTronRaleigh.getSlackStatus(shareBtn, showContext, userId, customMsg));
     },
 
-    getSlackSingleKegData: (kegIndex, shareBtn, userId) => {
-        return Promise.resolve(kegTronRaleigh.getSingleKegSlackStatus(kegIndex, shareBtn, userId));
+    getSlackSingleKegData: (kegIndex, shareBtn, showContext, userId, customMsg) => {
+        return Promise.resolve(kegTronRaleigh.getSingleKegSlackStatus(kegIndex, shareBtn, showContext, userId, customMsg));
+    },
+
+    getSlackKegModal: (shareBtn, userId) => {
+        return kegTronRaleigh.getSlackModal(shareBtn, userId);
+    },
+
+    getSlackSingleKegModal: (kegIndex, shareBtn, userId) => {
+        return kegTronRaleigh.getSingleKegSlackModal(kegIndex, shareBtn, userId);
     }
 }

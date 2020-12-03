@@ -28,6 +28,14 @@ class SlackCompose {
         this.addComponent(new SlackBlockSection(text, accessory));
     }
 
+    addTextInput(text, actionId, blockId, isOpt) {
+        this.addComponent(new SlackBlockTextInput(text, actionId, blockId, isOpt));
+    }
+    
+    addChannelSelect(text, actionId, blockId, isOpt) {
+        this.addComponent(new SlackBlockChannelSelect(text, actionId, blockId, isOpt));
+    }
+
     addAction(actionArr) {
         this.addComponent(new SlackBlockAction(actionArr));
     }
@@ -58,7 +66,9 @@ class SlackCompose {
         this.components.forEach(component => {
             outObj.blocks.push(component.json());
         })
+        console.log("Type is: ", this.type)
         if (this.type == "modal") {
+            console.log("Adding modal fluff...");
             outObj.type = "modal";
             outObj.title = {
                 "type": "plain_text",
@@ -154,18 +164,20 @@ class SlackBlockSection extends SlackBlockComponent {
 }
 
 class SlackBlockTextInput extends SlackBlockComponent {
-    constructor(text, actionId) {
+    constructor(text, actionId, blockId, isOptional = false) {
         super();
         this.text = text || "";
-        this.actionId = actionId || "";
+        if (actionId) this.actionId = actionId;
+        if (blockId) this.blockId = blockId;
+        this.isOptional = !!isOptional;
     }
 
     json() {
-        return {
+        var outObj = {
             "type": "input",
+            "optional": this.isOptional,
 			"element": {
-				"type": "plain_text_input",
-				"action_id": this.actionId
+				"type": "plain_text_input"
 			},
 			"label": {
 				"type": "plain_text",
@@ -173,7 +185,40 @@ class SlackBlockTextInput extends SlackBlockComponent {
 				"emoji": true
 			}
         }
+        if (this.blockId) outObj.block_id = this.blockId;
+        if (this.actionId) outObj.element.action_id = this.actionId;
+        return outObj;
     }
+}
+
+class SlackBlockChannelSelect extends SlackBlockComponent {
+    constructor(text, actionId, blockId, isOptional = false) {
+        super();
+        this.text = text || "";
+        if (actionId) this.actionId = actionId;
+        if (blockId) this.blockId = blockId;
+        this.isOptional = !!isOptional;
+    }
+
+    json() {
+        var outObj = {
+            "type": "input",
+			"optional": this.isOptional,
+			"label": {
+				"type": "plain_text",
+				"text": this.text
+			},
+			"element": {
+				"default_to_current_conversation": true,
+				"type": "conversations_select",
+				"response_url_enabled": true
+			}
+        }
+        if (this.blockId) outObj.block_id = this.blockId;
+        if (this.actionId) outObj.element.action_id = this.actionId;
+        return outObj;
+    }
+
 }
 
 class SlackBlockAction extends SlackBlockComponent {
@@ -238,7 +283,7 @@ class SlackBlockAccessoryButton extends SlackBlockAccessory {
 }
 
 module.exports = {
-    slackCompose: () => {
-        return new SlackCompose();
+    slackCompose: (type) => {
+        return new SlackCompose(type);
     }
 }

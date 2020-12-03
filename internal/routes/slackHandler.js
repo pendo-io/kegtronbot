@@ -1,4 +1,4 @@
-const { getKegData, getSlackKegData, getSlackSingleKegData } = require('./kegtron');
+const { getKegData, getSlackKegData, getSlackSingleKegData, getSlackKegModal, getSlackSingleKegModal} = require('./kegtron');
 const axios = require('axios');
 
 class SlackAuth {
@@ -61,12 +61,26 @@ class SlackInteractive {
     constructor(reqBody) {
         this._rawBody = {...reqBody};
         this.payload = JSON.parse(reqBody.payload);
+        this.type = this.payload.type;
         console.log('Slack Interactive Payload: ', this.payload);
         this.user = this.payload.user;
         this.triggerId = this.payload.trigger_id;
         this.actions = this.payload.actions;
-        this.responseUrl = this.payload.response_url;
-        this.processActions();
+        switch (this.type) {
+            case "block_actions":
+                this.responseUrl = this.payload.response_url;
+                this.actions = this.payload.actions;
+                this.processActions();
+                break;
+            case "view_submission":
+                this.stateValues = this.payload.view.state.values;
+                this.callbackId = this.payload.view.callback_id;
+                this.metadata = (this.payload.view.private_metadata ? JSON.parse(this.payload.view.private_metadata) : {});
+                console.log('Metadata: ', this.metadata);
+                console.log('State: ', this.stateValues);
+                this.handleModalView();
+                break;
+        }
     }
 
     getPostCfg(data) {
@@ -89,8 +103,6 @@ class SlackInteractive {
         else cfg.data.replace_original = false;
         if (deleteOrig) cfg.data.deleteOrig =  true;
 
-        console.log("Sending cfg: ", cfg);
-
         return axios(cfg).then((resp) => {
             return true; // true = success
         }).catch((err) => {
@@ -112,6 +124,19 @@ class SlackInteractive {
         })
     }
 
+    shareKegMessage(kegId, customMsg) {
+        var kegIndex = parseInt(kegId.split('|')[1]);
+        Promise.resolve(getSlackSingleKegData(kegIndex, false, true, this.user.id, customMsg)).then((data) => {
+            this.sendResponse(data, true)
+        });
+    }
+
+    beerSignalMessage(customMsg) {
+        Promise.resolve(getSlackKegData(false, true, this.user.id, customMsg)).then((data) => {
+            this.sendResponse(data, true, null, true);
+        });
+    }
+
     processActions() {
         this.actions.forEach(action => {
             this.handleAction(action);
@@ -124,36 +149,84 @@ class SlackInteractive {
                 this.sendDelete();
                 break;
             case "share_keg_modal":
+                var kegIndex = parseInt(action.value.split('|')[1]);
+                var modalView = getSlackSingleKegModal(kegIndex, false, this.user.id);
+                var shareModal = new SlackModal(this.triggerId, modalView);
+                shareModal.trigger('share_keg', JSON.stringify({'kegId':action.value}));
                 break;
             case "beer_signal_modal":
+                var modalView = getSlackKegModal(false, this.user.id);
+                var shareModal = new SlackModal(this.triggerId, modalView);
+                shareModal.trigger('beer_signal');
                 break;
             case "share_keg":
-                var kegIndex = parseInt(action.value.split('|')[1]);
-                Promise.resolve(getSlackSingleKegData(kegIndex, false, this.user.id)).then((data) => {
-                    this.sendResponse(data, true)
-                });
+                this.shareKegMessage(action.value);
                 break;
             case "beer_signal":
-                Promise.resolve(getSlackKegData(false, this.user.id)).then((data) => {
-                    this.sendResponse(data, true, null, true);
-                });
+                this.beerSignalMessage();
+                break;
+        }
+    }
+
+    getCustomMsg(stateValues) {
+        return stateValues.custom_message_block.custom_message_input.value;
+    }
+
+    handleModalView() {
+        switch(this.callbackId) {
+            case "share_keg":
+                var kegId = this.metadata.kegId;
+                this.responseUrl = this.payload.response_urls[0].response_url;
+                var customMsg = this.getCustomMsg(this.stateValues);
+                this.shareKegMessage(kegId, customMsg);
+                break;
+            case "beer_signal":
+                this.responseUrl = this.payload.response_urls[0].response_url;
+                var customMsg = this.getCustomMsg(this.stateValues);
+                this.beerSignalMessage(customMsg);
                 break;
         }
     }
 }
 
 class SlackModal {
-    constructor(triggerId) {
+    constructor(triggerId, modalView) {
         this.triggerId = triggerId;
-        this.view = {};
+        this.view = modalView;
     }
 
-    trigger() {
-
+    getPostCfg(data) {
+        return {
+            method: "post",
+            headers: {
+                "content-type": "application/json",
+                Authorization: `Bearer ${pendoSlack.botToken}`
+            },
+            data: data
+        }
     }
 
-    setView() {
+    trigger(callbackId, metadata) {
+        var data = {};
+        data.view = this.view;
+        data.view.private_metadata = metadata || "";
+        data.view.callback_id = callbackId;
+        data.trigger_id = this.triggerId;
+        var cfg = this.getPostCfg(data);
+        console.log('Sending data from trigger: ', data);
+        cfg.url = "https://slack.com/api/views.open";
+        axios(cfg).then((resp) => {
+            resp = resp.data;
+            console.log('Sent Modal Post. Response Data:');
+            console.log(resp);
+        }).catch(err =>{
+            console.log(err);
+            console.log("Error triggering modal");
+        })
+    }
 
+    setView(modalView) {
+        this.view = modalView;
     }
 }
 
@@ -161,7 +234,7 @@ module.exports = {
     slackMessageHandler: (req, res, next) => {
         var receivedMsg = new SlackMessage(req.body);
         res.status(200).send();
-        Promise.resolve(getSlackKegData(true, receivedMsg.user.id)).then((data) => {
+        Promise.resolve(getSlackKegData(true, false, receivedMsg.user.id)).then((data) => {
             receivedMsg.sendBlockResponse(data);
         });
     },

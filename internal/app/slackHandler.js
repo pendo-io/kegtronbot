@@ -1,20 +1,58 @@
-const { KegTron } = require('./kegtron');
+const { KegTron, KegTronGroup } = require('./kegtron');
 const {SlackAuth, SlackAuthGroup, SlackModal, SlackInteractive, SlackMessage} = require('./slackObjects');
+const {getSlackAccessTokens, getKegTronDeviceIds} = require('./accessTokens');
 
-var authControl = new SlackAuthGroup();
-authControl.addAuth(new SlackAuth('pendo-test', 'xoxb-330553142418-1544529695268-HTIcT9Z371ON3OJCSD7KeVS1', 'T9QG946CA'));
 
-var kegTronRaleigh = new KegTron('S93rEbNyuzVJaDx3sdfaWXQ', 'Raleigh');
+function getAuthControl() {
+    var outObj = new SlackAuthGroup();
+    return Promise.resolve(getSlackAccessTokens()).then(slackAuths => {
+        slackAuths = slackAuths.data;
+        slackAuths.forEach(auth => {
+            outObj.addAuth(new SlackAuth(auth.name, auth.bot_token, auth.team_id));
+        })
+        return outObj;
+    });
+}
+
+function getKegTrons() {
+    var outObj = new KegTronGroup();
+    return Promise.resolve(getKegTronDeviceIds()).then( devices => {
+        devices = devices.data;
+        devices.forEach(device => {
+            outObj.addDevice(new KegTron(device.device_id, device.name));
+        })
+        return outObj;
+    });
+}
+
+var authControl, kegTrons;
+Promise.resolve(getAuthControl()).then(ac => {
+    authControl = ac;
+});
+Promise.resolve(getKegTrons()).then(kt => {
+    kegTrons = kt;
+});
+
+setInterval(() => {
+    // check hourly for updates to auth and device list
+    Promise.resolve(getAuthControl()).then(ac => {
+        authControl = ac;
+    });
+    Promise.resolve(getKegTrons()).then(kt => {
+        kegTrons = kt;
+    });
+}, 60 * 60 * 1000);
 
 function shareKegMessage(slackInteractive, kegId, customMsg) {
+    var deviceName = kegId.split('|')[0];
     var kegIndex = parseInt(kegId.split('|')[1]);
-    Promise.resolve(kegTronRaleigh.getSingleKegSlackStatus(kegIndex, false, true, slackInteractive.user.id, customMsg)).then((data) => {
+    Promise.resolve(kegTrons.getDevice(deviceName).getSingleKegSlackStatus(kegIndex, false, true, slackInteractive.user.id, customMsg)).then((data) => {
         slackInteractive.sendResponse(data, true)
     });
 }
 
-function beerSignalMessage(slackInteractive, customMsg) {
-    Promise.resolve(kegTronRaleigh.getSlackStatus(false, true, slackInteractive.user.id, customMsg)).then((data) => {
+function beerSignalMessage(slackInteractive, deviceName, customMsg) {
+    Promise.resolve(kegTrons.getDevice('Raleigh').getSlackStatus(false, true, slackInteractive.user.id, customMsg)).then((data) => {
         slackInteractive.sendResponse(data, true, null, true);
     });
 }
@@ -32,15 +70,17 @@ function handleKegAction(slackInteractive, action) {
             slackInteractive.sendDelete();
             break;
         case "share_keg_modal":
+            var deviceName = action.value.split('|')[0]
             var kegIndex = parseInt(action.value.split('|')[1]);
-            var modalView = kegTronRaleigh.getSingleKegSlackModal(kegIndex, false, slackInteractive.user.id);
+            var modalView = kegTrons.getDevice(deviceName).getSingleKegSlackModal(kegIndex, false, slackInteractive.user.id);
             var shareModal = new SlackModal(slackInteractive.triggerId, modalView, slackInteractive.botToken);
             shareModal.trigger('share_keg', JSON.stringify({ 'kegId': action.value }));
             break;
         case "beer_signal_modal":
-            var modalView = kegTronRaleigh.getSlackModal(false, slackInteractive.user.id);
+            var deviceName = action.value;
+            var modalView = kegTrons.getDevice(deviceName).getSlackModal(false, slackInteractive.user.id);
             var shareModal = new SlackModal(slackInteractive.triggerId, modalView, slackInteractive.botToken);
-            shareModal.trigger('beer_signal');
+            shareModal.trigger('beer_signal', JSON.stringify({ 'deviceName': action.value }));
             break;
     }
 }
@@ -58,9 +98,10 @@ function handleModalView(slackInteractive) {
             shareKegMessage(slackInteractive, kegId, customMsg);
             break;
         case "beer_signal":
+            var deviceName = slackInteractive.metadata.deviceName;
             slackInteractive.setResponseUrl(slackInteractive.payload.response_urls[0].response_url);
             var customMsg = getKegCustomMsg(slackInteractive.stateValues);
-            beerSignalMessage(slackInteractive, customMsg);
+            beerSignalMessage(slackInteractive, deviceName, customMsg);
             break;
     }
 }
@@ -68,9 +109,11 @@ function handleModalView(slackInteractive) {
 module.exports = {
     slackMessageHandler: (req, res, next) => {
         var receivedMsg = new SlackMessage(req.body);
+        console.log('authControl: ', authControl);
+        console.log('kegTrons: ', kegTrons);
         if (authControl.getBotToken(receivedMsg.getTeamId())) {
             res.status(200).send();
-            Promise.resolve(kegTronRaleigh.getSlackStatus(true, false, receivedMsg.user.id)).then((data) => {
+            Promise.resolve(kegTrons.getDevice('Raleigh').getSlackStatus(true, false, receivedMsg.user.id)).then((data) => {
                 receivedMsg.sendResponse(data);
             });
         } else {

@@ -6,7 +6,7 @@ const port = 8080;
 const bodyParser = require("body-parser");
 const path = require("path");
 const createError = require("http-errors");
-const { slackMessageHandler, slackInteractiveHandler } = require("./internal/routes/slackHandler");
+const { slackMessageHandler, slackInteractiveHandler } = require("./internal/app/slackHandler");
 
 // Configure middleware
 app.set("port", process.env.PORT || port); // set express to use this port
@@ -14,7 +14,9 @@ app.set("view engine", "ejs"); // configure template engine
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json()); // parse form data client
 
-// Application routes
+// ====================
+//  Application routes
+// ====================
 
 // Default response
 app.get("/", (req, res, next) => {

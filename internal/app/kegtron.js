@@ -50,6 +50,10 @@ class KegTron {
         this.refresh();
     }
 
+    getName() {
+        return this.deviceName;
+    }
+
     refresh() {
         var now = Date.now();
         if (now - this.lastUpdate > 60000) {
@@ -71,9 +75,11 @@ class KegTron {
             this.rawData = data;
             this.buildKegs(data);
             this.lastUpdate = Date.now();
-        }).catch((err) => {
+            return 0;
+        }).catch((err) => {            
             console.log(err);
             console.log('Error retrieving kegtron data');
+            return 1;
         })
 
 
@@ -178,7 +184,7 @@ class KegTron {
                 {
                     "type": "button",
                     "text": "Beer Signal",
-                    "value": "beer_signal",
+                    "value": this.deviceName,
                     "action": "beer_signal_modal"
                 },
                 {
@@ -216,9 +222,26 @@ class KegTron {
     }
 }
 
-var kegTronRaleigh = new KegTron('S93rEbNyuzVJaDx3sdfaWXQ', 'Raleigh');
+class KegTronGroup {
+    constructor() {
+        this.devices = {};
+    }
+
+    addDevice(newDevice) {
+        if (newDevice instanceof KegTron) this.devices[newDevice.getName()] = newDevice;
+        else {
+            console.error("Error -- attempted to add object that is not a valid KegTron device");
+            console.error("Added object: ", newDevice);
+        }
+    }
+
+    getDevice(name) {
+        return this.devices[name] || {};
+    }
+}
 
 module.exports = {
     Keg,
-    KegTron
+    KegTron,
+    KegTronGroup
 }

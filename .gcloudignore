@@ -23,3 +23,8 @@
 *.test
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# Custom files
+slackauths.json
+kegtrons.json
+pendo-kegtron-3e44e21c508f.json

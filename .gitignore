@@ -1,0 +1,10 @@
+.idea/
+.DS_Store
+cover.out
+*.swp
+*.swo
+vendor/
+node_modules
+slackauths.json
+kegtrons.json
+pendo-kegtron-3e44e21c508f.json

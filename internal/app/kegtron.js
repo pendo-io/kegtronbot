@@ -15,22 +15,23 @@ class Keg {
     }
 
     getDrinksRemaining() {
-        return Math.floor((this.volumeStart - this.volumeConsumed) / this.drinkSize);
+        return (((this.volumeStart - this.volumeConsumed) / this.volumeStart) * 100).toFixed(1);
     }
 
     isEmpty() {
-        return this.name.trim().toLowerCase() == "empty" || this.getDrinksRemaining() == 0
+        return this.name.trim().toLowerCase() == "empty" || this.getDrinksRemaining() < 0.2
     }
 
     getTextStatus() {
         return `Keg ${this.portnum}: ${this.drinkType} -${this.style ? ` ${this.style} -` : ``}${this.maker ? ` ${this.maker} |` : ``} ${this.name}
-${this.isEmpty() ? `This keg is empty` : `${this.getDrinksRemaining()} drinks remaining`}`;
+${this.isEmpty() ? `This keg is empty` : `${this.getDrinksRemaining()}% remaining`}`;
     }
 
     getMrkdwnStatus() {
         var drRem = this.getDrinksRemaining();
-        return `*${this.drinkType}* -${this.style ? ` _${this.style}_ -` : ``}${this.maker ? ` ${this.maker} |` : ``} ${this.name}
-${this.isEmpty() ? `:x: This keg is empty` : `${drRem < 10 ? `:warning:` : ``} \`${drRem}\` drinks remaining`}`;
+        return `*${this.name}* (${this.maker})
+_${this.style}_
+${this.isEmpty() ? `:x: This keg is empty` : `${drRem < 5 ? `:warning:` : ``} \`${drRem}% remaining\``}`;
     }
 
     addSlackStatus(composer, shareBtn = true) {
@@ -41,10 +42,10 @@ ${this.isEmpty() ? `:x: This keg is empty` : `${drRem < 10 ? `:warning:` : ``} \
 }
 
 class KegTron {
-    constructor(deviceId, deviceName) {
+    constructor(deviceIdList, deviceName) {
         this.rawData = {};
         this.kegs = [];
-        this.deviceId = deviceId;
+        this.deviceIdList = deviceIdList;
         this.deviceName = deviceName;
         this.lastUpdate = 0;
         this.refresh();
@@ -61,40 +62,48 @@ class KegTron {
         }
     }
 
-    updateData() {
-        var cfg = {
-            method: "get",
-            url: "https://mdash.net/api/v2/m/device",
-            params: {
-                access_token: this.deviceId
-            }
-        }
+    async updateData() {
+        let rawData = [];
 
-        return axios(cfg).then((resp) => {
-            var data = resp.data.shadow.state.reported;
-            this.rawData = data;
-            this.buildKegs(data);
-            this.lastUpdate = Date.now();
-            return 0;
-        }).catch((err) => {            
-            console.log(err);
-            console.log('Error retrieving kegtron data');
+        try {
+            var requestList = this.deviceIdList.map(async (id) => {
+                let config = {
+                    method: "get",
+                    url: "https://mdash.net/api/v2/m/device",
+                    params: {
+                        access_token: id
+                    }
+                }
+
+                let resp = await axios(config);
+                let data = resp.data.shadow.state.reported;
+                rawData.push(data);
+            });
+        } catch (err) {
+            console.error(err);
+            console.error('Error retrieving kegtron data');
             return 1;
-        })
+        }
+        await Promise.all(requestList);
+        this.rawData = rawData;
 
-
+        this.buildKegs(rawData);
+        this.lastUpdate = Date.now();
+        return 0;
     }
 
     buildKegs(kegtronData) {
-        var i = 0;
-        var newKegs = []
-        while (i > -1) {
-            var kegPort = `port${i}`;
-            if (kegtronData.config[kegPort]) {
-                newKegs.push(new Keg(kegtronData.config[kegPort], kegtronData.config_readonly[kegPort], this.deviceName, i));
-                i++;
-            } else {
-                i = -1;
+        let newKegs = []
+        for (const kegtronDevice of kegtronData) {
+            var i = 0;
+            while (i > -1) {
+                var kegPort = `port${i}`;
+                if (kegtronDevice.config[kegPort]) {
+                    newKegs.push(new Keg(kegtronDevice.config[kegPort], kegtronDevice.config_readonly[kegPort], this.deviceName, i));
+                    i++;
+                } else {
+                    i = -1;
+                }
             }
         }
         this.kegs = newKegs;

@@ -27,15 +27,14 @@ async function getKegTrons() {
     }
 }
 
-function refreshKegTrons() {
-    var outObj = new KegTronGroup();
-    return Promise.resolve(getKegTronDeviceIds()).then(devices => {
-        devices = devices.data;
-        devices.forEach(device => {
-            outObj.addDevice(new KegTron(device.device_id, device.name));
-        })
-        return outObj;
-    });
+async function refreshKegTrons() {
+    let kegtronGroup = new KegTronGroup();
+    let deviceGroups = await getKegTronDeviceIds(); 
+    console.warn('deviceGroups: ', deviceGroups)
+    for (const deviceGroup of deviceGroups.data) {
+        kegtronGroup.addDevice(new KegTron(deviceGroup.device_id_list, deviceGroup.name))
+    }
+    return kegtronGroup;
 }
 
 var _authControl = getAuthControl();

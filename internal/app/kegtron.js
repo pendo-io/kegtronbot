@@ -19,7 +19,7 @@ class Keg {
     }
 
     isEmpty() {
-        return this.name.trim().toLowerCase() == "empty" || this.getDrinksRemaining() < 0.2
+        return this.name.trim().toLowerCase() == "empty" || this.getDrinksRemaining() < 0.5
     }
 
     getTextStatus() {
@@ -31,7 +31,7 @@ ${this.isEmpty() ? `This keg is empty` : `${this.getDrinksRemaining()}% remainin
         var drRem = this.getDrinksRemaining();
         return `*${this.name}* (${this.maker})
 _${this.style}_
-${this.isEmpty() ? `:x: This keg is empty` : `${drRem < 5 ? `:warning:` : ``} \`${drRem}% remaining\``}`;
+${this.isEmpty() ? `:x: This keg is empty` : `${drRem < 5 ? `:warning:` : ``} \`${Math.round(drRem)}% remaining\``}`;
     }
 
     addSlackStatus(composer, shareBtn = true) {
